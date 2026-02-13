@@ -21,6 +21,9 @@ let currentDetailQty = 1;
 let currentActiveGroup = 'essentials'; 
 let editingProductId = null;
 
+// NEW ADMIN EMAIL
+const ADMIN_EMAIL = "pparu97622@gmail.com";
+
 /* ==========================================
    2. THE PRODUCT DATABASE (48 ITEMS)
    ========================================== */
@@ -102,7 +105,6 @@ function showDashboard(group) {
     document.getElementById('admin-dashboard').classList.add('hidden');
     document.getElementById('user-dashboard').classList.add('hidden');
     document.getElementById('main-app').classList.remove('hidden');
-    
     document.getElementById('category-title').innerText = group.toUpperCase();
     loadProductsByGroup(group);
     window.scrollTo(0,0);
@@ -151,14 +153,11 @@ async function loadProductsByGroup(group, filter = 'all') {
    4. PRODUCT MODAL
    ========================================== */
 async function openProductDetail(id) {
-    // Search local first, then firebase
     selectedProduct = getFlatProducts().find(p => p.id === id);
-    
     if (!selectedProduct) {
         const doc = await db.collection("products").doc(id).get();
         if(doc.exists) selectedProduct = doc.data();
     }
-
     if (!selectedProduct) return;
 
     currentDetailQty = 1;
@@ -169,7 +168,6 @@ async function openProductDetail(id) {
     
     const sizes = ['XS', 'S', 'M', 'L', 'XL'];
     document.getElementById('detail-size').innerHTML = sizes.map(s => `<option value="${s}">${s}</option>`).join('');
-    
     document.getElementById('product-modal').classList.remove('hidden');
 }
 
@@ -233,9 +231,6 @@ function toggleCart() { document.getElementById('cart-drawer').classList.toggle(
    ========================================== */
 function openAddModal() {
     editingProductId = null;
-    document.getElementById('admin-p-name').value = '';
-    document.getElementById('admin-p-price').value = '';
-    document.getElementById('admin-p-img').value = '';
     document.getElementById('admin-modal').classList.remove('hidden');
 }
 
@@ -280,17 +275,92 @@ async function adminDeleteProduct(id) {
 }
 
 /* ==========================================
-   7. AUTH & STARTUP
+    7. AUTH & STARTUP (UPDATED)
    ========================================== */
+
+// 1. Switch between Login and Register tabs in the modal
+function switchAuthTab(tab) {
+    const loginForm = document.getElementById('login-form-container');
+    const regForm = document.getElementById('register-form-container');
+    const tabL = document.getElementById('tab-login');
+    const tabR = document.getElementById('tab-register');
+
+    if (tab === 'login') {
+        loginForm.classList.remove('hidden');
+        regForm.classList.add('hidden');
+        tabL.classList.add('active');
+        tabR.classList.remove('active');
+    } else {
+        loginForm.classList.add('hidden');
+        regForm.classList.remove('hidden');
+        tabL.classList.remove('active');
+        tabR.classList.add('active');
+    }
+}
+
+// 2. Handle Email/Password Registration
+async function handleEmailRegister() {
+    const email = document.getElementById('reg-email').value;
+    const password = document.getElementById('reg-password').value;
+    const name = document.getElementById('reg-name').value;
+
+    if (!email || !password || !name) {
+        showToast("PLEASE FILL ALL FIELDS");
+        return;
+    }
+
+    try {
+        const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+        // Set the user's name
+        await userCredential.user.updateProfile({ displayName: name });
+        toggleAuthModal();
+        showToast(`WELCOME, ${name.toUpperCase()}`);
+    } catch (e) {
+        alert(e.error || e.message);
+    }
+}
+
+// 3. Handle Email/Password Login
+async function handleEmailLogin() {
+    const email = document.getElementById('login-email').value;
+    const password = document.getElementById('login-password').value;
+
+    try {
+        await auth.signInWithEmailAndPassword(email, password);
+        toggleAuthModal();
+        showToast("SUCCESSFULLY SIGNED IN");
+    } catch (e) {
+        alert("INVALID EMAIL OR PASSWORD");
+    }
+}
+
+// 4. Google Sign-In (Existing)
 async function handleGoogleSignIn() {
     try {
         await auth.signInWithPopup(googleProvider);
         toggleAuthModal();
-    } catch (e) { alert(e.message); }
+        showToast("SIGNED IN WITH GOOGLE");
+    } catch (e) {
+        alert(e.message);
+    }
 }
 
-function toggleAuthModal() { document.getElementById('auth-modal').classList.toggle('hidden'); }
+// 5. Logout Function
+async function handleLogout() {
+    try {
+        await auth.signOut();
+        showToast("SIGNED OUT");
+        setTimeout(() => location.reload(), 1000); // Reload to clear session
+    } catch (e) {
+        console.error("Logout Error", e);
+    }
+}
 
+function toggleAuthModal() { 
+    document.getElementById('auth-modal').classList.toggle('hidden'); 
+}
+
+// 6. Auth State Listener (Modified to handle Email & Google)
 auth.onAuthStateChanged(user => {
     const adminL = document.getElementById('nav-admin-link');
     const userL = document.getElementById('nav-user-link');
@@ -299,8 +369,12 @@ auth.onAuthStateChanged(user => {
     if (user) {
         if(userL) userL.classList.remove('hidden');
         if(loginT) loginT.classList.add('hidden');
-        document.getElementById('user-name-display').innerText = user.displayName;
-        if (user.email === "ghyalpolama62@gmail.com") {
+        
+        // Display user name (fallback to email if name is missing)
+        const nameDisplay = user.displayName || user.email.split('@')[0];
+        document.getElementById('user-name-display').innerText = nameDisplay;
+        
+        if (user.email === ADMIN_EMAIL) {
             if(adminL) adminL.classList.remove('hidden');
         }
     } else {
@@ -312,14 +386,13 @@ auth.onAuthStateChanged(user => {
 
 function showToast(msg) {
     const t = document.getElementById('toast');
+    if (!t) return;
     t.innerText = msg;
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 3000);
 }
 
-// STARTUP TRIGGER
 document.addEventListener('DOMContentLoaded', () => {
     updateCartUI();
-    // Pre-load the essentials so the user sees products immediately
     loadProductsByGroup('essentials');
 });
